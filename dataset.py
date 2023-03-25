@@ -1,12 +1,14 @@
-# standard library imports
+""" Dataset module """
+
+# Standard library imports
 import os
 from collections import namedtuple
 
-# numpy and friends
+# Numpy and friends
 import cv2
 import numpy as np
 
-# pytorch
+# PyTorch
 import torch
 from torchvision import transforms
 from torch.utils.data import Dataset
@@ -47,9 +49,7 @@ train_id_to_color = np.array([c.color for c in cs_classes
 
 
 class CityscapesDataset(Dataset):
-    """
-    Dataset class for Cityscapes semantic segmentation data
-    """
+    """ Dataset class for Cityscapes semantic segmentation data """
 
     def __init__(self, rootDir: str, folder: str, tf: transforms = None):
         self.rootDir = rootDir
@@ -83,7 +83,7 @@ class CityscapesDataset(Dataset):
         return sourceImg, labelImg
 
 
-def get_data_splits(rootDir):
+def get_data_splits(rootDir: str):
     data = CityscapesDataset(rootDir, 'train', tf=preprocess)
     test_set = CityscapesDataset(rootDir, 'val', tf=preprocess)
 
@@ -93,16 +93,3 @@ def get_data_splits(rootDir):
                                                        generator=torch.Generator().manual_seed(42))
 
     return train_set, dev_set, test_set
-
-
-
-# img_1, label_1 = cs[0]
-#
-# cv2.imshow('img_1', img_1)
-# cv2.waitKey(0)
-#
-# label_1 = train_id_to_color[label_1.numpy()].astype(np.uint8)
-# label_1 = cv2.cvtColor(label_1, cv2.COLOR_RGB2BGR)
-#
-# cv2.imshow('label_1', label_1)
-# cv2.waitKey(0)
