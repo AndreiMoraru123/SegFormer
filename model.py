@@ -62,7 +62,7 @@ class EfficientSelfAttention(nn.Module):
 
     def forward(self, x, H, W):
         Q = self.q(x)
-        Q = rearrange(Q, 'b (h w) (n d) -> b n (h w) d', h=H, w=W, n=self.num_heads)
+        Q = rearrange(Q, 'b hw (n d) -> b n hw d', n=self.num_heads)
 
         if self.sr_ratio > 1:
             x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
@@ -71,8 +71,8 @@ class EfficientSelfAttention(nn.Module):
             x = self.norm(x)
 
         K, V = self.kv(x).chunk(2, dim=-1)
-        K = rearrange(K, 'b (h w) (n d) -> b n (h w) d', h=H, w=W, n=self.num_heads)
-        V = rearrange(V, 'b (h w) (n d) -> b n (h w) d', h=H, w=W, n=self.num_heads)
+        K = rearrange(K, 'b hw (n d) -> b n hw d', n=self.num_heads)
+        V = rearrange(V, 'b hw (n d) -> b n hw d', n=self.num_heads)
 
         # Dot product
         attn = torch.einsum('b n i d, b n j d -> b n i j', Q, K) * self.scale
@@ -80,7 +80,7 @@ class EfficientSelfAttention(nn.Module):
         attn = self.dropout(attn)
 
         x = torch.einsum('b n i j, b n j d -> b n i d', attn, V)
-        x = rearrange(x, 'b n (h w) d -> b (h w) (n d)', h=H, w=W, n=self.num_heads)
+        x = rearrange(x, 'b n hw d -> b hw (n d)')
         x = self.proj(x)
         x = self.dropout(x)
         return x
@@ -93,12 +93,13 @@ class MixFeedForward(nn.Module):
         super().__init__()
         self.fc1 = nn.Linear(in_features, hidden_features)
         self.fc2 = nn.Linear(hidden_features, out_features)
+        self.dropout = dropout
 
         # Depth-wise convolution
         self.conv = nn.Conv2d(in_channels=hidden_features, out_channels=hidden_features,
                               kernel_size=3, bias=True, padding=1, groups=hidden_features)
 
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(self.dropout)
 
     def forward(self, x, H, W):
         x = self.fc1(x)
@@ -106,9 +107,9 @@ class MixFeedForward(nn.Module):
         x = self.conv(x)
         x = rearrange(x, 'b c h w -> b (h w) c')
         x = F.gelu(x)
-        x = self.dropout(x, p=self.dropout, training=self.training)
+        x = self.dropout(x)
         x = self.fc2(x)
-        x = self.dropout(x, p=self.dropout, training=self.training)
+        x = self.dropout(x)
         return x
 
 
@@ -128,7 +129,7 @@ class TransformerBlock(nn.Module):
 
     def forward(self, x, H, W):
         x = x + self.drop_path(self.attn(self.norm1(x), H, W))
-        x = x + self.drop_path(self.mlp(self.norm2(x), H, W))
+        x = x + self.drop_path(self.ffn(self.norm2(x), H, W))
         return x
 
 
@@ -138,12 +139,13 @@ class MixTransformerStage(nn.Module):
     def __init__(self, patch_embed, blocks, norm):
         super().__init__()
         self.patch_embed = patch_embed
-        self.blocks = nn.Sequential(*blocks)
+        self.blocks = nn.ModuleList(blocks)
         self.norm = norm
 
     def forward(self, x):
         x, H, W = self.patch_embed(x)
-        x = self.blocks(x, H, W)
+        for block in self.blocks:
+            x = block(x, H, W)
         x = self.norm(x)
         x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
         return x
@@ -152,7 +154,7 @@ class MixTransformerStage(nn.Module):
 class MixTransformer(nn.Module):
     """ Transformer Decoder: A set of 4 consecutive transformer stages """
 
-    def __init__(self, in_channels, embed_dims, num_heads, depths, spatial_reduction_rations, dropout, drop_path):
+    def __init__(self, in_channels, embed_dims, num_heads, depths, spatial_reduction_ratios, dropout, drop_path):
         super().__init__()
         self.stages = nn.ModuleList()
         self.num_stages = len(depths)
@@ -162,7 +164,7 @@ class MixTransformer(nn.Module):
             for _ in range(depths[stage]):
                 blocks.append(TransformerBlock(dim=embed_dims[stage], num_heads=num_heads[stage],
                                                dropout=dropout, drop_path=drop_path,
-                                               spatial_reduction_ratio=spatial_reduction_rations[stage]))
+                                               spatial_reduction_ratio=spatial_reduction_ratios[stage]))
             if stage == 0:
                 patch_size = 7
                 stride = 4
@@ -179,8 +181,8 @@ class MixTransformer(nn.Module):
 
     def forward(self, x):
         outputs = []
-        for stage in range(self.num_stages):
-            x = self.stages[stage](x)
+        for stage in self.stages:
+            x = stage(x)
             outputs.append(x)
         return outputs
 
@@ -188,26 +190,23 @@ class MixTransformer(nn.Module):
 class DecoderHead(nn.Module):
     """ Decoder Head """
 
-    def __init__(self, in_channels, num_classes, embed_dim, dropout = 0.5):
+    def __init__(self, in_channels, num_classes, embed_dim, dropout=0.1):
         super().__init__()
         self.in_channels = in_channels
         self.num_classes = num_classes
         self.embed_dim = embed_dim
+        self.dropout_p = dropout
 
-        # 1x1 conv to fuse multi-level features from different stages in the encoder
-        self.layers = nn.ModuleList([nn.Conv2d(in_channels=chans, out_channels=embed_dim,
-                                               kernel_size=1) for chans in reversed(in_channels)])
-        self.linear_fuse = nn.Conv2d(in_channels=embed_dim * len(self.layers),
-                                     out_channels=embed_dim, kernel_size=1,
-                                     stride=1, padding=0, bias=True)
-        self.bn = nn.BatchNorm2d(embed_dim, eps=1e-5, momentum=0.01)
+        # 1x1 conv to fuse multi-scale output from encoder
+        self.layers = nn.ModuleList([nn.Conv2d(in_channels=ch, out_channels=self.embed_dim, kernel_size=(1, 1))
+                                     for ch in reversed(self.in_channels)])
+        self.linear_fuse = nn.Conv2d(in_channels=self.embed_dim * len(self.layers),
+                                     out_channels=self.embed_dim,
+                                     kernel_size=(1, 1), bias=False)
+        self.bn = nn.BatchNorm2d(self.embed_dim, eps=1e-5)
 
-        # 1x1 conv to predict the final segmentation map
-        self.linear_pred = nn.Conv2d(in_channels=embed_dim, out_channels=num_classes,
-                                     kernel_size=1, stride=1, padding=0, bias=False)
-
-        self.dropout = nn.Dropout2d(p=dropout, inplace=True)
-
+        # 1x1 conv to get num_class channel predictions
+        self.linear_pred = nn.Conv2d(self.embed_dim, self.num_classes, kernel_size=(1, 1))
         self.init_weights()
 
     def init_weights(self):
@@ -216,15 +215,22 @@ class DecoderHead(nn.Module):
         nn.init.constant_(self.bn.bias, 0)
 
     def forward(self, x):
+        feature_size = x[0].shape[2:]
+
+        # project each encoder stage output to H/4, W/4
         x = [layer(xi) for layer, xi in zip(self.layers, reversed(x))]
-        x = [F.interpolate(xi, size=x[0].shape[2:], mode='bilinear',
-                           align_corners=False) for xi in x[:-1]] + [x[-1]]
+        x = [F.interpolate(xi, size=feature_size, mode='bilinear', align_corners=False)
+             for xi in x[:-1]] + [x[-1]]
+
+        # concatenate project output and use 1x1
+        # convs to get num_class channel output
         x = torch.cat(x, dim=1)
         x = self.linear_fuse(x)
         x = self.bn(x)
         x = F.relu(x, inplace=True)
-        x = self.dropout(x)
+        x = F.dropout(x, p=self.dropout_p, training=self.training)
         x = self.linear_pred(x)
+
         return x
 
 
@@ -236,13 +242,13 @@ class SegFormer(nn.Module):
         self.embed_dims = [64, 128, 320, 512]
         self.num_heads = [1, 2, 5, 8]
         self.depths = [3, 4, 18, 3]
-        self.spatial_reduction_rations = [8, 4, 2, 1]
+        self.spatial_reduction_ratios = [8, 4, 2, 1]
         self.dropout = 0.1
         self.drop_path = 0.1
 
         self.backbone = MixTransformer(in_channels=self.in_channels, embed_dims=self.embed_dims,
                                        num_heads=self.num_heads, depths=self.depths,
-                                       spatial_reduction_rations=self.spatial_reduction_rations,
+                                       spatial_reduction_ratios=self.spatial_reduction_ratios,
                                        dropout=self.dropout, drop_path=self.drop_path)
 
         self.decoder = DecoderHead(in_channels=self.embed_dims, num_classes=self.num_classes,
@@ -263,7 +269,8 @@ class SegFormer(nn.Module):
             nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
 
     def forward(self, x):
+        image_hw = x.shape[2:]
         x = self.backbone(x)
         x = self.decoder(x)
-        x = F.interpolate(x, size=x.shape[2:], mode='bilinear', align_corners=False)
+        x = F.interpolate(x, size=image_hw, mode='bilinear', align_corners=False)
         return x
