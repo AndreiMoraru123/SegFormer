@@ -83,8 +83,19 @@ class CityscapesDataset(Dataset):
         return sourceImg, labelImg
 
 
-# cs = CityscapesDataset(rootDir=r'D:\SemanticSegmentation', folder='train')
-#
+def get_data_splits(rootDir):
+    data = CityscapesDataset(rootDir, 'train', tf=preprocess)
+    test_set = CityscapesDataset(rootDir, 'val', tf=preprocess)
+
+    total_size = len(data)
+    train_size = int(0.8 * total_size)
+    train_set, dev_set = torch.utils.data.random_split(data, [train_size, total_size - train_size],
+                                                       generator=torch.Generator().manual_seed(42))
+
+    return train_set, dev_set, test_set
+
+
+
 # img_1, label_1 = cs[0]
 #
 # cv2.imshow('img_1', img_1)
