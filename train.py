@@ -14,7 +14,7 @@ from utils import get_dataloaders
 from utils import train_validate_model
 
 # Dataset
-from dataset import CityscapesDataset, get_data_splits
+from dataset import get_data_splits
 
 # Model
 from model import SegFormer
