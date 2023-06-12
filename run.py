@@ -59,9 +59,10 @@ targetHeight = 512
 model = SegFormer(in_channels=3, num_classes=NUM_CLASSES).to(device)
 model.load_state_dict(torch.load(f'trained_models/{MODEL_NAME}.pt', map_location=device))
 
+
 if __name__ == '__main__':
     predict_cs_video(model, MODEL_NAME,
-                     demo_video_path='demoVideo/stuttgart_00',
+                     demo_video_path='demoVideo/custom',
                      id_to_color=train_id_to_color,
                      output_dir='demo',
                      target_width=targetWidth,
