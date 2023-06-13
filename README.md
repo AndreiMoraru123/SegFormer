@@ -2,6 +2,11 @@
 
 Multi-Stage Vision Transformers for Semantic Segmentation trained on CityScapes
 
+<p align="center">
+  <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExMTM0OWU4MTMxOGMxMWUyNTU1ODMzNDY1ZTA2NjNlMGVkYmRmNTBlNiZlcD12MV9pbnRlcm5hbF9naWZzX2dpZklkJmN0PWc/ZXQ3n1SSvEJCghpzdg/giphy-downsized-large.gif" alt="Gif Description" width="800" height="300">
+</p>
+
+
 ### Paper
 
 ```bib
