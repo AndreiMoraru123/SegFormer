@@ -3,7 +3,11 @@
 Multi-Stage Vision Transformers for Semantic Segmentation trained on CityScapes
 
 <p align="center">
-  <img src="https://media.giphy.com/media/wvyJ7GPEHgXx6okZiW/giphy-downsized.gif" alt="Gif Description" width="800" height="300">
+  <img src="https://media.giphy.com/media/wvyJ7GPEHgXx6okZiW/giphy-downsized.gif" alt="Segmentation" width="800" height="300">
+</p>
+
+<p align="center">
+  <img src="https://media.giphy.com/media/bsKJsRfV9fkx1mVBJy/giphy-downsized.gif" alt="Attention" width="800" height="300">
 </p>
 
 
