@@ -1,6 +1,6 @@
 from utils import *
 from model import SegFormer
-from train import test_loader, test_set, criterion, meanIoU, NUM_CLASSES
+from train import NUM_CLASSES
 from dataset import train_id_to_color
 
 import os
