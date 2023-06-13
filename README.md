@@ -7,7 +7,7 @@ Multi-Stage Vision Transformers for Semantic Segmentation trained on CityScapes
 </p>
 
 <p align="center">
-  <img src="https://media.giphy.com/media/bsKJsRfV9fkx1mVBJy/giphy-downsized.gif" alt="Attention" width="800" height="300">
+  <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExN2FkNDE1YmNmNzg0MzBhNjZkOGNlZTQ0ZTc3MzE3NjcyMjE2MmVjYSZlcD12MV9pbnRlcm5hbF9naWZzX2dpZklkJmN0PWc/bsKJsRfV9fkx1mVBJy/giphy-downsized.gif" alt="Attention" width="800" height="300">
 </p>
 
 
